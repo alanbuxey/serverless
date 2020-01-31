@@ -34,7 +34,7 @@ serverless invoke local --function functionName
 * `--env` or `-e` String representing an environment variable to set when invoking your function, in the form `<name>=<value>`. Can be repeated for more than one environment variable.
 * `--docker` Enable docker support for NodeJS/Python/Ruby/Java. Enabled by default for other
   runtimes.
-* `--docker-arg` Pass additional arguments to docker run command when `--docker` is option used. e.g. `--docker-arg '-p 9229:9229' --docker-arg '-v /var:/host_var'`
+* `--docker-arg` Pass additional arguments to docker run command when `--docker` is option used. e.g. `--docker-arg='-p 9229:9229' --docker-arg='-v /var:/host_var'`
 
 ## Environment
 
@@ -121,6 +121,11 @@ Use of the `--docker` flag and runtimes other than NodeJs, Python, Java, & Ruby 
 `docker` group so that you can invoke docker without `sudo`.
 
 **Note:** In order to get correct output when using Java runtime, your Response class must implement `toString()` method.
+
+**Environment variables:** The `IS_LOCAL` environment variable, as well as
+any environment variables provided via command line arguments,
+will only be set once the invoked function begins its execution.
+They _will not_ be set during the parsing of the `serverless.yml` file.
 
 ## Resource permissions
 

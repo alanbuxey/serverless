@@ -16,7 +16,7 @@ layout: Doc
 
 This setup specifies that the `compute` function should be triggered whenever:
 
-1. the corresponding DynamoDB table is modified (e.g. a new entry is added).
+1. the corresponding [DynamoDB](https://serverless.com/dynamodb/) table is modified (e.g. a new entry is added).
 2. the Lambda checkpoint has not reached the end of the Kinesis stream (e.g. a new record is added).
 
 The ARN for the stream can be specified as a string, the reference to the ARN of a resource by logical ID, or the import of an ARN that was exported by a different service or CloudFormation stack.
@@ -32,7 +32,7 @@ functions:
       - stream:
           type: dynamodb
           arn:
-            Fn::GetAtt: [ MyDynamoDbTable, StreamArn ]
+            Fn::GetAtt: [MyDynamoDbTable, StreamArn]
       - stream:
           type: dynamodb
           arn:
@@ -47,11 +47,15 @@ functions:
           type: kinesis
           arn:
             Fn::ImportValue: MyExportedKinesisStreamArnId
-      - stream
+      - stream:
+          type: dynamodb
+          arn:
+            Ref: MyDynamoDbTableStreamArn
+      - stream:
           type: kinesis
           arn:
             Fn::Join:
-              - ":"
+              - ':'
               - - arn
                 - aws
                 - kinesis
@@ -76,5 +80,161 @@ functions:
           arn: arn:aws:kinesis:region:XXXXXX:stream/foo
           batchSize: 100
           startingPosition: LATEST
+          maximumRetryAttempts: 10
           enabled: false
+```
+
+## Setting the BatchWindow
+
+The configuration below sets up a Kinesis stream event for the `preprocess` function which has a batch window of `10`.
+
+The `batchWindow` property specifies a maximum amount of time to wait before triggering a Lambda invocation with a batch of records. Your Lambda function will be invoked when one of the following three things happens:
+
+1. The total payload size reaches 6MB;
+
+2. The `batchWindow` reaches its maximum value; or
+
+3. the `batchSize` reaches it maximum value.
+
+For more information, read the [AWS release announcement](https://aws.amazon.com/about-aws/whats-new/2019/09/aws-lambda-now-supports-custom-batch-window-for-kinesis-and-dynamodb-event-sources/) for this property.
+
+**Note:** The `stream` event will hook up your existing streams to a Lambda function. Serverless won't create a new stream for you.
+
+```yml
+functions:
+  preprocess:
+    handler: handler.preprocess
+    events:
+      - stream:
+          arn: arn:aws:kinesis:region:XXXXXX:stream/foo
+          batchWindow: 10
+```
+
+## Setting BisectBatchOnFunctionError
+
+This configuration provides the ability to recursively split a failed batch and retry on a smaller subset of records, eventually isolating the metadata causing the error.
+
+**Note:** Serverless only sets this property if you explicitly add it to the stream configuration (see example below).
+
+[Related AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-lambda-eventsourcemapping.html#cfn-lambda-eventsourcemapping-bisectbatchonfunctionerror)
+
+**Note:** The `stream` event will hook up your existing streams to a Lambda function. Serverless won't create a new stream for you.
+
+```yml
+functions:
+  preprocess:
+    handler: handler.preprocess
+    events:
+      - stream:
+          arn: arn:aws:kinesis:region:XXXXXX:stream/foo
+          bisectBatchOnFunctionError: true
+```
+
+## Setting the MaximumRetryAttempts
+
+This configuration sets up the maximum number of times to retry when the function returns an error.
+
+**Note:** Serverless only sets this property if you explicitly add it to the stream configuration (see example below).
+
+[Related AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-lambda-eventsourcemapping.html#cfn-lambda-eventsourcemapping-maximumretryattempts)
+
+**Note:** The `stream` event will hook up your existing streams to a Lambda function. Serverless won't create a new stream for you.
+
+```yml
+functions:
+  preprocess:
+    handler: handler.preprocess
+    events:
+      - stream:
+          arn: arn:aws:kinesis:region:XXXXXX:stream/foo
+          batchSize: 100
+          maximumRetryAttempts: 10
+          startingPosition: LATEST
+          enabled: false
+```
+
+## Setting the OnFailure destination
+
+This configuration sets up the onFailure location for events to be sent to once it has reached the maximum number of times to retry when the function returns an error.
+
+**Note:** Serverless only sets this property if you explicitly add it to the stream configuration (see example below).
+
+[Related AWS documentation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-lambda-eventsourcemapping.html#cfn-lambda-eventsourcemapping-destinationconfig)
+
+The ARN for the SNS or SQS can be specified as a string, the reference to the ARN of a resource by logical ID, or the import of an ARN that was exported by a different service or CloudFormation stack.
+
+**Note:** The `destinationConfig` will hook up your existing SNS or SQS resources. Serverless won't create a new SNS or SQS for you.
+
+```yml
+functions:
+  preprocess1:
+    handler: handler.preprocess
+    events:
+      - stream:
+          arn: arn:aws:kinesis:region:XXXXXX:stream/foo
+          batchSize: 100
+          maximumRetryAttempts: 10
+          startingPosition: LATEST
+          enabled: false
+          destinations:
+            onFailure: arn:aws:sqs:region:XXXXXX:queue
+
+  preprocess2:
+    handler: handler.preprocess
+    events:
+      - stream:
+          arn: arn:aws:kinesis:region:XXXXXX:stream/foo
+          batchSize: 100
+          maximumRetryAttempts: 10
+          startingPosition: LATEST
+          enabled: false
+          destinations:
+            onFailure:
+              arn:
+                Fn::GetAtt:
+                  - MyQueue
+                  - Arn
+              type: sqs
+
+  preprocess3:
+    handler: handler.preprocess
+    events:
+      - stream:
+          arn: arn:aws:kinesis:region:XXXXXX:stream/foo
+          batchSize: 100
+          maximumRetryAttempts: 10
+          startingPosition: LATEST
+          enabled: false
+          destinations:
+            onFailure:
+              arn:
+                Fn::Join:
+                  - ':'
+                  - - arn
+                    - aws
+                    - kinesis
+                    - Ref: AWS::Region
+                    - Ref: AWS::AccountId
+                    - mySnsTopic
+              type: sns
+```
+
+## Setting the ParallelizationFactor
+
+The configuration below sets up a Kinesis stream event for the `preprocess` function which has a parallelization factor of 10 (default is 1).
+
+The `parallelizationFactor` property specifies the number of concurrent Lambda invocations for each shard of the Kinesis Stream.
+
+For more information, read the [AWS release announcement](https://aws.amazon.com/blogs/compute/new-aws-lambda-scaling-controls-for-kinesis-and-dynamodb-event-sources/) for this property.
+
+**Note:** The `stream` event will hook up your existing streams to a Lambda function. Serverless won't create a new stream for you.
+
+```yml
+functions:
+  preprocess:
+    handler: handler.preprocess
+    events:
+      - stream:
+          arn: arn:aws:kinesis:region:XXXXXX:stream/foo
+          parallelizationFactor: 10
 ```
